@@ -36,7 +36,12 @@ function near(a: number, b: number, tol = 1e-6) {
  * A raw webcam frame shows you the way a person facing you looks: the subject's
  * right eye sits at the LOW-x side of the image.
  */
-function makeFace(opts: { rightTiltUp: number; leftTiltUp: number }): NormalizedPoint[] {
+function makeFace(opts: {
+  rightTiltUp: number;
+  leftTiltUp: number;
+  /** Head roll in degrees, rotating the whole face about its centre. */
+  rollDeg?: number;
+}): NormalizedPoint[] {
   const pts: NormalizedPoint[] = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5 }));
 
   // Subject's right eye: low x. Outer canthus is the one further from the nose.
@@ -54,6 +59,25 @@ function makeFace(opts: { rightTiltUp: number; leftTiltUp: number }): Normalized
   pts[LEFT_EYE.innerCanthus] = { x: lInnerX, y: 0.4 };
   pts[LEFT_EYE.upperLid] = { x: 0.64, y: 0.37 };
   pts[LEFT_EYE.lowerLid] = { x: 0.64, y: 0.43 };
+
+  if (opts.rollDeg) {
+    // A real head roll is a RIGID rotation in pixel space. Normalized x and y
+    // are divided by different extents, so rotating normalized coords directly
+    // would be a shear. Convert to pixels, rotate, convert back.
+    const t = (opts.rollDeg * Math.PI) / 180;
+    const cos = Math.cos(t);
+    const sin = Math.sin(t);
+    const cx = 0.5 * W;
+    const cy = 0.4 * H;
+    for (let i = 0; i < pts.length; i++) {
+      const dx = pts[i].x * W - cx;
+      const dy = pts[i].y * H - cy;
+      pts[i] = {
+        x: (cx + dx * cos - dy * sin) / W,
+        y: (cy + dx * sin + dy * cos) / H,
+      };
+    }
+  }
 
   return pts;
 }
@@ -111,6 +135,41 @@ console.log('\ncanthal tilt sign (positive = outer corner higher)');
   // 0.05 normalized y over 0.12 normalized x, scaled to pixels.
   const expected = (Math.atan2(0.05 * H, 0.12 * W) * 180) / Math.PI;
   check(`upturn magnitude matches atan2 (${expected.toFixed(2)}°)`, near(rUp, expected, 1e-9));
+}
+
+console.log('\nhead roll vs. true canthal tilt');
+{
+  // Pure head roll, no actual tilt in the eye geometry.
+  const rolled = makeFace({ rightTiltUp: 0, leftTiltUp: 0, rollDeg: 8 });
+  const r = measureEye(rolled, RIGHT_EYE, W, H)!.angleDeg;
+  const l = measureEye(rolled, LEFT_EYE, W, H)!.angleDeg;
+
+  check('pure roll pushes the two eyes in OPPOSITE directions', r * l < 0, `R=${r.toFixed(2)} L=${l.toFixed(2)}`);
+  check('pure roll is antisymmetric — the eyes cancel', near(r + l, 0, 1e-9), `sum=${(r + l).toFixed(6)}`);
+
+  // Genuine bilateral tilt, head level.
+  const tilted = makeFace({ rightTiltUp: 0.02, leftTiltUp: 0.02 });
+  const tr = measureEye(tilted, RIGHT_EYE, W, H)!.angleDeg;
+  const tl = measureEye(tilted, LEFT_EYE, W, H)!.angleDeg;
+  check('true tilt pushes both eyes the SAME direction', tr * tl > 0, `R=${tr.toFixed(2)} L=${tl.toFixed(2)}`);
+
+  // Both at once: the mean recovers tilt, the half-difference recovers roll.
+  const both = makeFace({ rightTiltUp: 0.02, leftTiltUp: 0.02, rollDeg: 8 });
+  const br = measureEye(both, RIGHT_EYE, W, H)!.angleDeg;
+  const bl = measureEye(both, LEFT_EYE, W, H)!.angleDeg;
+  const meanAngle = (br + bl) / 2;
+  const halfDiff = (br - bl) / 2;
+
+  check(
+    'mean of the two angles is roll-invariant (recovers true tilt)',
+    Math.abs(meanAngle - (tr + tl) / 2) < 0.6,
+    `mean=${meanAngle.toFixed(2)} vs level-head tilt=${((tr + tl) / 2).toFixed(2)}`,
+  );
+  check(
+    'half-difference recovers the roll angle',
+    Math.abs(halfDiff - 8) < 0.6,
+    `halfDiff=${halfDiff.toFixed(2)} vs applied roll=8`,
+  );
 }
 
 console.log('\nindex sanity');

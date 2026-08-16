@@ -8,7 +8,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { LEFT_EYE, RIGHT_EYE, measureEye, type EyeMetrics } from './landmarks';
 import { drawOverlay } from './draw';
-import { FpsMeter, TrackingQualityMeter, type TrackingQuality } from './trackingQuality';
+import {
+  EMPTY_RANGES,
+  FpsMeter,
+  RangeAccumulator,
+  TrackingQualityMeter,
+  decomposeAngles,
+  type RangeSnapshot,
+  type TrackingQuality,
+} from './trackingQuality';
 
 export type TrackerStatus = 'idle' | 'starting' | 'running' | 'error';
 
@@ -28,6 +36,11 @@ export interface TrackerStats {
   landmarkCount: number;
   frameSize: { width: number; height: number };
   delegate: 'GPU' | 'CPU' | null;
+  /** Canthal tilt and head roll, split out of the two per-eye angles. */
+  canthalTiltDeg: number | null;
+  headRollDeg: number | null;
+  /** Min/max across the run, for reading after you sit back. */
+  ranges: RangeSnapshot;
 }
 
 const EMPTY_STATS: TrackerStats = {
@@ -44,6 +57,9 @@ const EMPTY_STATS: TrackerStats = {
   landmarkCount: 0,
   frameSize: { width: 0, height: 0 },
   delegate: null,
+  canthalTiltDeg: null,
+  headRollDeg: null,
+  ranges: EMPTY_RANGES,
 };
 
 /** Debug numbers refresh at this rate; drawing still runs every frame. */
@@ -70,6 +86,9 @@ export function useFaceTracker() {
   const fpsRef = useRef(new FpsMeter());
   const qualityRef = useRef(new TrackingQualityMeter());
   const delegateRef = useRef<'GPU' | 'CPU' | null>(null);
+  const rangesRef = useRef(new RangeAccumulator());
+  const frozenRef = useRef(false);
+  const [frozen, setFrozen] = useState(false);
 
   const stop = useCallback(() => {
     runningRef.current = false;
@@ -91,8 +110,11 @@ export function useFaceTracker() {
 
     fpsRef.current.reset();
     qualityRef.current.reset();
+    rangesRef.current.reset();
+    frozenRef.current = false;
     lastTimestampRef.current = -1;
 
+    setFrozen(false);
     setStats(EMPTY_STATS);
     setStatus('idle');
   }, []);
@@ -178,6 +200,34 @@ export function useFaceTracker() {
     const fps = fpsRef.current.tick(now);
     const quality = qualityRef.current.update(landmarks);
 
+    const axis = left && right ? decomposeAngles(right.angleDeg, left.angleDeg) : null;
+
+    // Freezing holds the capture still so post-test movement cannot pollute it.
+    if (frozenRef.current) return;
+
+    const acc = rangesRef.current;
+    acc.countSample();
+    // The meter reports 0 until it has two timestamps; recording that would
+    // park a bogus 0.0 in the min for the whole run.
+    if (fps > 0) acc.observe('fps', fps);
+    acc.observe('score', quality.score);
+    acc.observe('inFrame', quality.inFrameRatio);
+    acc.observe('stability', quality.stability);
+    if (left) {
+      acc.observe('leftWidth', left.widthPx);
+      acc.observe('leftHeight', left.heightPx);
+      acc.observe('leftAngle', left.angleDeg);
+    }
+    if (right) {
+      acc.observe('rightWidth', right.widthPx);
+      acc.observe('rightHeight', right.heightPx);
+      acc.observe('rightAngle', right.angleDeg);
+    }
+    if (axis) {
+      acc.observe('canthalTilt', axis.canthalTiltDeg);
+      acc.observe('headRoll', axis.headRollDeg);
+    }
+
     if (now - lastStatsAtRef.current >= 1000 / STATS_HZ) {
       lastStatsAtRef.current = now;
       setStats({
@@ -188,8 +238,23 @@ export function useFaceTracker() {
         landmarkCount: landmarks?.length ?? 0,
         frameSize: { width: canvas.width, height: canvas.height },
         delegate: delegateRef.current,
+        canthalTiltDeg: axis?.canthalTiltDeg ?? null,
+        headRollDeg: axis?.headRollDeg ?? null,
+        ranges: acc.snapshot(),
       });
     }
+  }, []);
+
+  const resetRanges = useCallback(() => {
+    rangesRef.current.reset();
+    frozenRef.current = false;
+    setFrozen(false);
+    setStats((prev) => ({ ...prev, ranges: EMPTY_RANGES }));
+  }, []);
+
+  const toggleFreeze = useCallback(() => {
+    frozenRef.current = !frozenRef.current;
+    setFrozen(frozenRef.current);
   }, []);
 
   const scheduleFrame = useCallback(() => {
@@ -212,7 +277,18 @@ export function useFaceTracker() {
 
   useEffect(() => stop, [stop]);
 
-  return { videoRef, canvasRef, status, error, stats, start, stop };
+  return {
+    videoRef,
+    canvasRef,
+    status,
+    error,
+    stats,
+    frozen,
+    start,
+    stop,
+    resetRanges,
+    toggleFreeze,
+  };
 }
 
 async function createLandmarker(

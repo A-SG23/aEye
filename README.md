@@ -87,6 +87,40 @@ canvas backing-store pixels, which equal source video pixels.
 
 `npm run check` pins all of this down.
 
+## Min/max capture
+
+Reading live numbers is impossible at the distance you'd actually apply
+eyeliner — your face is too close to the panel and you are looking at your eye,
+not the screen. So the readout captures min/max across a run:
+
+| Control | Key | Effect |
+| --- | --- | --- |
+| Reset ranges | <kbd>R</kbd> | Clears the capture and starts a fresh window |
+| Freeze | <kbd>space</kbd> | Holds the capture so later movement cannot pollute it |
+
+Protocol: press <kbd>R</kbd>, lean in and hold, sit back, press <kbd>space</kbd>,
+then read the min–max under each value.
+
+Capture accumulates at full frame rate, not at the 10 Hz the readout refreshes,
+so a brief dip while leaning in still registers.
+
+## Canthal tilt vs. head roll
+
+The per-eye angle is measured against the image horizontal, so it mixes two
+different things: the eye's real tilt and whatever roll the head happens to
+have. They separate cleanly, because the sign convention is normalised per eye:
+
+- a **head roll** moves the two eye angles in **opposite** directions
+- a **real canthal tilt** moves them the **same** direction
+
+So `mean(right, left)` is the roll-invariant canthal tilt, and
+`(right - left) / 2` is the head roll. Both are shown in the "Face axis" panel
+and proved in `scripts/landmarks.check.ts`.
+
+This matters for the wing: a template angle expressed as an offset from the
+measured canthal axis survives head roll, whereas an absolute image-space angle
+does not.
+
 ## Tracking confidence is derived, not reported
 
 `FaceLandmarkerResult` exposes only `faceLandmarks`, `faceBlendshapes` and

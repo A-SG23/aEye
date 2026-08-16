@@ -114,8 +114,85 @@ function clamp01(value: number): number {
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
 
-/** Rolling FPS over a short window of frame timestamps. */
+export interface MetricRange {
+  min: number;
+  max: number;
+}
+
+export interface RangeSnapshot {
+  /** Frames accumulated since the last reset. */
+  samples: number;
+  ranges: Record<string, MetricRange>;
+}
+
+export const EMPTY_RANGES: RangeSnapshot = { samples: 0, ranges: {} };
+
+/**
+ * Min/max capture across a run.
+ *
+ * Accumulates at full frame rate — not at the 10 Hz the readout refreshes —
+ * so a brief dip while leaning in still registers. Nothing here is displayed
+ * live; the point is to read the extremes afterwards, when your face is no
+ * longer six inches from the panel.
+ */
+export class RangeAccumulator {
+  private ranges = new Map<string, MetricRange>();
+  private samples = 0;
+
+  observe(key: string, value: number | null | undefined): void {
+    if (value === null || value === undefined || !Number.isFinite(value)) return;
+    const existing = this.ranges.get(key);
+    if (existing === undefined) {
+      this.ranges.set(key, { min: value, max: value });
+      return;
+    }
+    if (value < existing.min) existing.min = value;
+    if (value > existing.max) existing.max = value;
+  }
+
+  countSample(): void {
+    this.samples++;
+  }
+
+  snapshot(): RangeSnapshot {
+    const ranges: Record<string, MetricRange> = {};
+    for (const [key, range] of this.ranges) ranges[key] = { ...range };
+    return { samples: this.samples, ranges };
+  }
+
+  reset(): void {
+    this.ranges.clear();
+    this.samples = 0;
+  }
+}
+
+/**
+ * Split the two per-eye tilt readings into the parts that matter.
+ *
+ * Because the angle sign is normalized per eye, a head roll moves the two eyes
+ * in OPPOSITE directions while a genuine canthal tilt moves them the SAME way.
+ * So the mean is roll-invariant and recovers true tilt, and the half-difference
+ * recovers the roll. Verified in scripts/landmarks.check.ts.
+ */
+export function decomposeAngles(
+  rightAngleDeg: number,
+  leftAngleDeg: number,
+): { canthalTiltDeg: number; headRollDeg: number } {
+  return {
+    canthalTiltDeg: (rightAngleDeg + leftAngleDeg) / 2,
+    headRollDeg: (rightAngleDeg - leftAngleDeg) / 2,
+  };
+}
+
+/**
+ * Rolling FPS over a short window of frame timestamps.
+ *
+ * Returns 0 until the window has warmed up. The first couple of frames after
+ * startup are hundreds of milliseconds apart, and reporting that as a real
+ * reading parks a meaningless low value in the captured minimum.
+ */
 export class FpsMeter {
+  private static readonly MIN_SAMPLES = 5;
   private stamps: number[] = [];
 
   tick(now: number): number {
@@ -123,7 +200,7 @@ export class FpsMeter {
     while (this.stamps.length > 0 && now - this.stamps[0] > 1000) {
       this.stamps.shift();
     }
-    if (this.stamps.length < 2) return 0;
+    if (this.stamps.length < FpsMeter.MIN_SAMPLES) return 0;
     const span = this.stamps[this.stamps.length - 1] - this.stamps[0];
     return span === 0 ? 0 : ((this.stamps.length - 1) * 1000) / span;
   }
