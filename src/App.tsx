@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { LEFT_EYE, RIGHT_EYE, type EyeMetrics } from './landmarks';
 import { useFaceTracker } from './useFaceTracker';
 import type { TrackerStats } from './useFaceTracker';
 import type { MetricRange, RangeSnapshot } from './trackingQuality';
+import type { WingGeometry } from './wing';
 import './App.css';
 
 export default function App() {
@@ -29,7 +30,7 @@ export default function App() {
   return (
     <main className="app">
       <header className="bar">
-        <h1>aEye — M0</h1>
+        <h1>aEye — M1</h1>
         <div className="controls">
           {status === 'running' && (
             <>
@@ -76,6 +77,8 @@ export default function App() {
 
 function DebugReadout({ stats }: { stats: TrackerStats }) {
   const { quality, ranges } = stats;
+  // Per-eye detail is hidden by default but kept intact — M2 needs it back.
+  const [showEyes, setShowEyes] = useState(false);
 
   return (
     <section className="debug">
@@ -139,22 +142,73 @@ function DebugReadout({ stats }: { stats: TrackerStats }) {
         </p>
       </div>
 
+      <div className="panel">
+        <h2>
+          Wing anchors <span className="tag tag-m1">M1</span>
+        </h2>
+        <Row label="Angle offset" value={`${stats.wingSpec.angleOffsetDeg.toFixed(0)}° above axis`} />
+        <Row label="Length" value={`${stats.wingSpec.lengthRatio.toFixed(2)} × eye width`} />
+        <WingRows label="Left" wing={stats.leftWing} range={ranges.ranges.leftWingLength} />
+        <WingRows label="Right" wing={stats.rightWing} range={ranges.ranges.rightWingLength} />
+        <p className="note">
+          Origin is the outer canthus. The angle is stored as an offset from the measured canthal
+          axis and the length as a fraction of eye width, so the template follows head roll and
+          rescales between faces. Defaults are placeholders until the parameter controls exist.
+        </p>
+      </div>
+
+      <div className="panel panel-toggle">
+        <button className="linkish" onClick={() => setShowEyes((v) => !v)}>
+          {showEyes ? '− Hide' : '+ Show'} per-eye debug
+        </button>
+      </div>
+
       {/* Ordered to match the mirrored preview: screen-left panel = screen-left eye. */}
-      <EyePanel
-        title="Left eye (subject) — left on screen"
-        indices={LEFT_EYE}
-        metrics={stats.left}
-        ranges={ranges}
-        prefix="left"
-      />
-      <EyePanel
-        title="Right eye (subject) — right on screen"
-        indices={RIGHT_EYE}
-        metrics={stats.right}
-        ranges={ranges}
-        prefix="right"
-      />
+      {showEyes && (
+        <>
+          <EyePanel
+            title="Left eye (subject) — left on screen"
+            indices={LEFT_EYE}
+            metrics={stats.left}
+            ranges={ranges}
+            prefix="left"
+          />
+          <EyePanel
+            title="Right eye (subject) — right on screen"
+            indices={RIGHT_EYE}
+            metrics={stats.right}
+            ranges={ranges}
+            prefix="right"
+          />
+        </>
+      )}
     </section>
+  );
+}
+
+function WingRows({
+  label,
+  wing,
+  range,
+}: {
+  label: string;
+  wing: WingGeometry | null;
+  range?: MetricRange;
+}) {
+  return (
+    <>
+      <Row
+        label={`${label} length`}
+        value={wing ? `${wing.lengthPx.toFixed(1)} px` : '—'}
+        range={range}
+        digits={1}
+        suffix=" px"
+      />
+      <Row
+        label={`${label} on screen`}
+        value={wing ? `${wing.wingAngleDeg.toFixed(1)}°` : '—'}
+      />
+    </>
   );
 }
 

@@ -11,6 +11,7 @@ import {
   toCanvas,
   type NormalizedPoint,
 } from '../src/landmarks.ts';
+import { resolveWing, type WingSpec } from '../src/wing.ts';
 
 const W = 1280;
 const H = 720;
@@ -169,6 +170,90 @@ console.log('\nhead roll vs. true canthal tilt');
     'half-difference recovers the roll angle',
     Math.abs(halfDiff - 8) < 0.6,
     `halfDiff=${halfDiff.toFixed(2)} vs applied roll=8`,
+  );
+}
+
+console.log('\nM1 wing anchor geometry');
+{
+  const spec: WingSpec = { angleOffsetDeg: 20, lengthRatio: 0.3 };
+  const face = makeFace({ rightTiltUp: 0.01, leftTiltUp: 0.01 });
+  const rEye = measureEye(face, RIGHT_EYE, W, H)!;
+  const lEye = measureEye(face, LEFT_EYE, W, H)!;
+  const rWing = resolveWing(rEye, spec);
+  const lWing = resolveWing(lEye, spec);
+
+  check('origin is exactly the outer canthus', rWing.origin === rEye.outer);
+
+  check(
+    'tip is ABOVE the outer canthus for both eyes',
+    rWing.tip.y < rWing.origin.y && lWing.tip.y < lWing.origin.y,
+    `R dy=${(rWing.tip.y - rWing.origin.y).toFixed(1)} L dy=${(lWing.tip.y - lWing.origin.y).toFixed(1)}`,
+  );
+
+  check(
+    'tip extends AWAY from the nose for both eyes',
+    Math.abs(rWing.tip.x - rEye.inner.x) > Math.abs(rWing.origin.x - rEye.inner.x) &&
+      Math.abs(lWing.tip.x - lEye.inner.x) > Math.abs(lWing.origin.x - lEye.inner.x),
+  );
+
+  const rLen = Math.hypot(rWing.tip.x - rWing.origin.x, rWing.tip.y - rWing.origin.y);
+  check(
+    'tip distance equals lengthRatio x eye width',
+    near(rLen, rEye.widthPx * spec.lengthRatio, 1e-9),
+    `${rLen.toFixed(3)} vs ${(rEye.widthPx * spec.lengthRatio).toFixed(3)}`,
+  );
+
+  check(
+    'wing angle is exactly canthal axis + offset',
+    near(rWing.wingAngleDeg - rWing.canthalAngleDeg, spec.angleOffsetDeg, 1e-9),
+  );
+
+  // Mirror symmetry: a symmetric face must produce mirror-image wings.
+  check(
+    'symmetric face yields symmetric wing angles',
+    near(rWing.wingAngleDeg, lWing.wingAngleDeg, 1e-9),
+    `R=${rWing.wingAngleDeg.toFixed(3)} L=${lWing.wingAngleDeg.toFixed(3)}`,
+  );
+  check(
+    'symmetric face yields mirrored tip heights',
+    near(rWing.tip.y, lWing.tip.y, 1e-9),
+  );
+
+  // THE property the spec exists for: roll the head and the wing must keep the
+  // same angle relative to the face, even though its screen angle changes.
+  const rolled = makeFace({ rightTiltUp: 0.01, leftTiltUp: 0.01, rollDeg: 12 });
+  const rEyeRolled = measureEye(rolled, RIGHT_EYE, W, H)!;
+  const rWingRolled = resolveWing(rEyeRolled, spec);
+
+  check(
+    'roll changes the wing screen angle (it tracks the head)',
+    Math.abs(rWingRolled.wingAngleDeg - rWing.wingAngleDeg) > 5,
+    `${rWing.wingAngleDeg.toFixed(2)} -> ${rWingRolled.wingAngleDeg.toFixed(2)}`,
+  );
+  check(
+    'but the offset from the canthal axis is UNCHANGED by roll',
+    near(rWingRolled.wingAngleDeg - rWingRolled.canthalAngleDeg, spec.angleOffsetDeg, 1e-9),
+  );
+
+  // Scale invariance: the same spec on a bigger face gives a proportional wing.
+  const bigEye = measureEye(face, RIGHT_EYE, W * 2, H * 2)!;
+  const bigWing = resolveWing(bigEye, spec);
+  check(
+    'length scales with the face, angle does not',
+    near(bigWing.lengthPx / rWing.lengthPx, 2, 1e-6) &&
+      near(bigWing.wingAngleDeg, rWing.wingAngleDeg, 1e-9),
+    `lengthPx ${rWing.lengthPx.toFixed(1)} -> ${bigWing.lengthPx.toFixed(1)}`,
+  );
+
+  // A zero-offset wing must lie exactly along the canthal axis.
+  const flat = resolveWing(rEye, { angleOffsetDeg: 0, lengthRatio: 1 });
+  const axisDx = rEye.outer.x - rEye.inner.x;
+  const axisDy = rEye.outer.y - rEye.inner.y;
+  const wingDx = flat.tip.x - flat.origin.x;
+  const wingDy = flat.tip.y - flat.origin.y;
+  check(
+    'zero offset lies along the canthal axis (cross product ~ 0)',
+    Math.abs(axisDx * wingDy - axisDy * wingDx) < 1e-6,
   );
 }
 

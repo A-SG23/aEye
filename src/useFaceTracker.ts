@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { LEFT_EYE, RIGHT_EYE, measureEye, type EyeMetrics } from './landmarks';
+import { DEFAULT_WING, resolveWing, type WingGeometry, type WingSpec } from './wing';
 import { drawOverlay } from './draw';
 import {
   EMPTY_RANGES,
@@ -39,6 +40,10 @@ export interface TrackerStats {
   /** Canthal tilt and head roll, split out of the two per-eye angles. */
   canthalTiltDeg: number | null;
   headRollDeg: number | null;
+  /** M1 wing anchors, resolved from the spec against the live measurement. */
+  wingSpec: WingSpec;
+  leftWing: WingGeometry | null;
+  rightWing: WingGeometry | null;
   /** Min/max across the run, for reading after you sit back. */
   ranges: RangeSnapshot;
 }
@@ -59,6 +64,9 @@ const EMPTY_STATS: TrackerStats = {
   delegate: null,
   canthalTiltDeg: null,
   headRollDeg: null,
+  wingSpec: DEFAULT_WING,
+  leftWing: null,
+  rightWing: null,
   ranges: EMPTY_RANGES,
 };
 
@@ -89,6 +97,9 @@ export function useFaceTracker() {
   const rangesRef = useRef(new RangeAccumulator());
   const frozenRef = useRef(false);
   const [frozen, setFrozen] = useState(false);
+  // Held in a ref so the render loop reads it without re-subscribing. Becomes
+  // state-driven once the parameter controls land.
+  const wingSpecRef = useRef<WingSpec>(DEFAULT_WING);
 
   const stop = useCallback(() => {
     runningRef.current = false;
@@ -195,7 +206,11 @@ export function useFaceTracker() {
     const left = landmarks ? measureEye(landmarks, LEFT_EYE, canvas.width, canvas.height) : null;
     const right = landmarks ? measureEye(landmarks, RIGHT_EYE, canvas.width, canvas.height) : null;
 
-    drawOverlay(ctx, landmarks, { left, right });
+    const spec = wingSpecRef.current;
+    const leftWing = left ? resolveWing(left, spec) : null;
+    const rightWing = right ? resolveWing(right, spec) : null;
+
+    drawOverlay(ctx, landmarks, { left, right }, { left: leftWing, right: rightWing });
 
     const fps = fpsRef.current.tick(now);
     const quality = qualityRef.current.update(landmarks);
@@ -227,6 +242,8 @@ export function useFaceTracker() {
       acc.observe('canthalTilt', axis.canthalTiltDeg);
       acc.observe('headRoll', axis.headRollDeg);
     }
+    if (leftWing) acc.observe('leftWingLength', leftWing.lengthPx);
+    if (rightWing) acc.observe('rightWingLength', rightWing.lengthPx);
 
     if (now - lastStatsAtRef.current >= 1000 / STATS_HZ) {
       lastStatsAtRef.current = now;
@@ -240,6 +257,9 @@ export function useFaceTracker() {
         delegate: delegateRef.current,
         canthalTiltDeg: axis?.canthalTiltDeg ?? null,
         headRollDeg: axis?.headRollDeg ?? null,
+        wingSpec: spec,
+        leftWing,
+        rightWing,
         ranges: acc.snapshot(),
       });
     }

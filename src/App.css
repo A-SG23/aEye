@@ -146,8 +146,7 @@ button:disabled {
 }
 
 .value {
-  font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums lining-nums;
   text-align: right;
 }
 
@@ -178,12 +177,38 @@ button.active {
 }
 
 kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   padding: 1px 5px;
   border-radius: 4px;
   border: 1px solid #3a4c5c;
   background: #1d2b36;
+}
+
+.tag-m1 {
+  background: #2d1f3d;
+  color: #c084fc;
+}
+
+/* The per-eye toggle sits in the grid as its own slim cell. */
+.panel-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border-style: dashed;
+}
+
+.linkish {
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  font-size: 12px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.linkish:hover {
+  opacity: 1;
 }
 
 .indices {
@@ -194,8 +219,8 @@ kbd {
 }
 
 .indices span {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
+  font-variant-numeric: tabular-nums lining-nums;
   padding: 2px 6px;
   border-radius: 4px;
   background: #232323;

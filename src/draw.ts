@@ -11,6 +11,7 @@ import {
   type EyeMetrics,
   type NormalizedPoint,
 } from './landmarks';
+import type { WingGeometry } from './wing';
 
 export const COLORS = {
   mesh: 'rgba(120, 220, 255, 0.55)',
@@ -19,6 +20,7 @@ export const COLORS = {
   canthus: '#00ff9d',
   lid: '#ffffff',
   axis: 'rgba(0, 255, 157, 0.9)',
+  wing: '#c084fc',
 } as const;
 
 const MESH_DOT = 1.1;
@@ -29,6 +31,10 @@ export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   landmarks: NormalizedPoint[] | null,
   metrics: { left: EyeMetrics | null; right: EyeMetrics | null },
+  wings: { left: WingGeometry | null; right: WingGeometry | null } = {
+    left: null,
+    right: null,
+  },
 ): void {
   const { width, height } = ctx.canvas;
   ctx.clearRect(0, 0, width, height);
@@ -86,6 +92,34 @@ export function drawOverlay(
 
   drawEyeRing(ctx, landmarks, RIGHT_EYE.ring, width, height);
   drawEyeRing(ctx, landmarks, LEFT_EYE.ring, width, height);
+
+  // Pass 5: M1 wing anchors, on top of everything.
+  for (const wing of [wings.right, wings.left]) {
+    if (wing) drawWing(ctx, wing);
+  }
+}
+
+/**
+ * The wing axis: outer canthus out to the tip. Drawn with the canthal axis it
+ * was measured from, so the offset between them is visible rather than implied.
+ */
+function drawWing(ctx: CanvasRenderingContext2D, wing: WingGeometry): void {
+  ctx.beginPath();
+  ctx.moveTo(wing.origin.x, wing.origin.y);
+  ctx.lineTo(wing.tip.x, wing.tip.y);
+  ctx.strokeStyle = COLORS.wing;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  ctx.beginPath();
+  ctx.arc(wing.tip.x, wing.tip.y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = COLORS.wing;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 function drawEyeRing(

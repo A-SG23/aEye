@@ -1,7 +1,7 @@
-# aEye — M0
+# aEye — M1
 
-Face landmark tracking scaffold. Vite + React + TypeScript, MediaPipe Face
-Landmarker, Canvas 2D overlay on a mirrored webcam feed.
+Face landmark tracking plus wing anchor geometry. Vite + React + TypeScript,
+MediaPipe Face Landmarker, Canvas 2D overlay on a mirrored webcam feed.
 
 Everything runs client-side. The wasm runtime and the model are served from
 this app's own origin (`public/mediapipe/`), so no frames and no requests leave
@@ -139,22 +139,57 @@ diagnosable:
 
 The UI labels this `derived`. Do not read it as model confidence.
 
+## M1 — wing anchors
+
+The wing is stored in terms of the face, never the image
+([src/wing.ts](src/wing.ts)):
+
+| Field | Meaning |
+| --- | --- |
+| origin | The outer canthus, landmark 33 / 263 |
+| `angleOffsetDeg` | Degrees **above the measured canthal axis** |
+| `lengthRatio` | Tip distance as a **fraction of measured eye width** |
+
+Resolution to pixels happens at draw time from the live measurement, which is
+what buys the two invariances that matter:
+
+- **Head roll.** The screen angle changes as you tilt, but the offset from the
+  canthal axis does not — so the wing stays put on the face.
+- **Scale.** The same spec produces a proportionally longer wing on a larger
+  face or a closer camera, with the angle unchanged.
+
+Direction is built from `eye.angleDeg + offset` rather than by rotating a raw
+vector, so it inherits the mirror-safe sign convention `measureEye` already
+establishes — positive is "tip up" for both eyes even though they point in
+opposite directions across the screen.
+
+Both invariances, plus mirror symmetry and the degenerate zero-offset case, are
+proved in `scripts/landmarks.check.ts`.
+
+The defaults (20° above axis, 0.30 × eye width) are placeholders standing in
+until the parameter controls exist.
+
 ## Layout
 
 ```
 src/landmarks.ts        indices + measurement geometry (pure)
-src/trackingQuality.ts  derived confidence + FPS meters (pure)
+src/wing.ts             M1 wing anchor spec + resolution (pure)
+src/trackingQuality.ts  derived confidence, ranges, FPS meters (pure)
 src/draw.ts             canvas overlay
 src/useFaceTracker.ts   camera, model, per-frame loop
 src/App.tsx             wiring + debug readout
 scripts/                asset sync, geometry checks
 ```
 
+Per-eye detail sits behind the "Show per-eye debug" toggle. It is hidden, not
+removed — M2 needs it back.
+
 The per-frame loop uses `requestVideoFrameCallback` where available so
 inference runs once per decoded frame rather than once per repaint, falling
 back to `requestAnimationFrame`. Drawing happens every frame; the React debug
 numbers update at 10 Hz to avoid re-render churn.
 
-## Not in M0
+## Not built yet
 
-Wing template, preset controls, guide mode, styling beyond legibility.
+Parameter controls for the wing spec, the filled wing shape, preset controls,
+guide mode, styling beyond legibility.
