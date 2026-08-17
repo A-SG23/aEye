@@ -19,7 +19,7 @@ import {
   type LocalPoint,
   type WingParams,
 } from '../wing.ts';
-import { traceWing } from '../draw.ts';
+import { COLORS, traceWing } from '../draw.ts';
 import type { StillFrame } from '../useFaceTracker.ts';
 
 /** Logical design space. Handles are positioned as percentages of it. */
@@ -145,13 +145,13 @@ export function WingDesigner({
     ctx.translate(-view.cropX, -view.cropY);
 
     traceWing(ctx, wing);
-    ctx.fillStyle = 'rgba(31, 157, 91, 0.26)';
+    ctx.fillStyle = COLORS.templateFill;
     ctx.fill();
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = 'rgba(12, 58, 36, 0.5)';
+    ctx.strokeStyle = COLORS.templateEdge;
     ctx.lineWidth = 3.5 / sx;
     ctx.stroke();
-    ctx.strokeStyle = '#1f9d5b';
+    ctx.strokeStyle = COLORS.template;
     ctx.lineWidth = 2 / sx;
     ctx.stroke();
 
@@ -176,7 +176,7 @@ export function WingDesigner({
     for (const anchor of [wing.upperAnchor, wing.lowerAnchor]) {
       ctx.beginPath();
       ctx.arc(anchor.x, anchor.y, 3.5 / sx, 0, Math.PI * 2);
-      ctx.fillStyle = '#1f9d5b';
+      ctx.fillStyle = COLORS.template;
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1.5 / sx;

@@ -12,8 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "check": "node --experimental-strip-types scripts/landmarks.check.ts",
     "lint": "oxlint",
-    "preview": "vite preview",
-    "logo": "node scripts/make-logo.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@fontsource/noto-serif": "^5.3.0",

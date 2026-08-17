@@ -412,7 +412,8 @@
 
 .meter > div {
   height: 100%;
-  background: var(--green);
+  /* Decorative fill, carries no text, so it can use the brighter iris olive. */
+  background: var(--olive);
   transition: width 120ms linear;
 }
 

@@ -33,14 +33,23 @@ export function traceWing(ctx: CanvasRenderingContext2D, wing: WingGeometry): vo
   ctx.closePath();
 }
 
+/**
+ * Canvas colours. The template values mirror the tokens in theme.css — canvas
+ * cannot read CSS custom properties, so they are duplicated here deliberately.
+ * The debug-cloud colours are intentionally NOT on-brand: they are diagnostic
+ * and want to be loud against both the face and the template.
+ */
 export const COLORS = {
   mesh: 'rgba(120, 220, 255, 0.5)',
   eye: '#ff3d81',
   iris: '#ffd166',
   canthus: '#00ff9d',
   lid: '#ffffff',
-  template: '#1f9d5b',
-  templateFill: 'rgba(31, 157, 91, 0.24)',
+  /** --green-bright: the iris highlight, chosen to survive skin tones. */
+  template: '#95b300',
+  templateFill: 'rgba(116, 134, 45, 0.28)',
+  /** --green-deep, as a dark under-stroke so the edge holds on pale skin too. */
+  templateEdge: 'rgba(67, 77, 26, 0.55)',
   templateFrozen: '#8c5e88',
   templateFrozenFill: 'rgba(140, 94, 136, 0.2)',
 } as const;
@@ -86,7 +95,7 @@ function drawTemplate(
   ctx.fill();
 
   // Dark under-stroke so the edge survives against pale skin too.
-  ctx.strokeStyle = 'rgba(12, 58, 36, 0.45)';
+  ctx.strokeStyle = COLORS.templateEdge;
   ctx.lineWidth = 3.5;
   ctx.lineJoin = 'round';
   ctx.stroke();

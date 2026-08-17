@@ -27,7 +27,6 @@ Camera access needs a secure context: `localhost` works, a bare LAN IP will not.
 | `npm run dev` | Dev server |
 | `npm run build` | Typecheck + production build |
 | `npm run check` | Geometry, template and freeze-gate checks |
-| `npm run logo` | Regenerate the pixel-art logo PNG |
 | `npm run lint` | oxlint |
 
 ## Shell
@@ -41,23 +40,44 @@ with no params or nesting did not justify a dependency. On viewports under
 
 ## Theme and logo
 
-> **The logo is a placeholder.** No logo asset was supplied, so
-> [scripts/make-logo.mjs](scripts/make-logo.mjs) generates one to spec — a
-> pixel-art eye with a green iris and black liner — as a real 21×13 PNG. To
-> swap in the real one, drop it at `public/aeye-logo.png` and delete that
-> script. If its palette differs, resample the tokens in
-> [src/theme.css](src/theme.css); nothing else needs to change.
+Two logo files, both the same artwork:
 
-Tokens live in [src/theme.css](src/theme.css). `--ink`, `--green` and
-`--green-deep` are sampled from the logo's pixel palette. Mauve is not in the
-logo, so it is chosen to sit beside that green without competing. The two
-accents never touch at full saturation — nav (mauve) and template affordances
-(green) stay in separate regions.
+| File | What it is |
+| --- | --- |
+| `public/aeye-logo.png` | 26×14, the native pixel grid. This is what renders. |
+| `public/aeye-logo-source.png` | The original 549×356 export, kept for provenance. |
+
+The source was drawn on a 26×14 grid and exported at 20× (with the outer
+partial cells cropped, hence the 9px column and 5px row offsets). Rendering
+that 549px file at sidebar size would mean a **non-integer downscale** — 549 to
+about 40px — which under `image-rendering: pixelated` samples unevenly and
+makes some art pixels a pixel wider than their neighbours. So the native grid
+was recovered instead and is what the app draws.
+
+That recovery is lossless, not a redraw: every one of the 549×356 source pixels
+was checked against its cell and all 195,444 matched, so re-expanding the 26×14
+grid by 20 reproduces the original exactly. The only change is trimming fully
+transparent border cells, which affects layout and nothing visible.
+
+Tokens live in [src/theme.css](src/theme.css). Every green, grey and ink value
+is an exact colour from the logo's 29-colour palette. Mauve is the one
+invention — it is not in the logo, and is chosen to sit opposite that olive
+without competing. The two accents never touch at full saturation; nav (mauve)
+and template affordances (green) stay in separate regions.
+
+Two deliberate splits inside the greens:
+
+- `--green` is `#556600` rather than the dominant iris `#74862d`, because white
+  text on the latter is only 4.1:1 and fails AA. `--olive` keeps `#74862d` for
+  decorative fills that carry no text.
+- `--green-bright` (`#95b300`, the iris highlight) is the template stroke. The
+  darker olives sit close to skin luminance, and the template's job is to stay
+  legible drawn over a face.
 
 The logo renders only at integer multiples of its native size, with
 `image-rendering: pixelated`. [src/components/Logo.tsx](src/components/Logo.tsx)
-rounds the `scale` prop and computes the pixel dimensions from it rather than
-letting CSS layout pick a fractional size.
+measures the file's own dimensions rather than hardcoding them, so replacing
+the asset needs no code change.
 
 Typography is Noto Serif throughout, latin subset, self-hosted.
 

@@ -1,37 +1,55 @@
 /**
  * Theme tokens.
  *
- * --ink, --green and --green-deep are sampled straight from the logo's pixel
- * palette (see scripts/make-logo.mjs). Mauve does not appear in the logo, so
- * it is chosen to sit beside that green without competing: same perceptual
- * weight, opposite temperature.
+ * Every green, grey and ink value below is an exact colour from the logo's
+ * 29-colour palette — sampled from public/aeye-logo.png, not eyeballed.
+ * Mauve is the one invention: it does not appear in the logo, and is chosen
+ * to sit opposite that olive on the wheel without competing with it.
  *
- * Mauve and green never touch at full saturation anywhere in the UI — the
- * sidebar keeps nav (mauve) and template affordances (green) in separate
- * regions, and panels put white space between them.
+ * Mauve and green never touch at full saturation anywhere in the UI — nav
+ * (mauve) and template affordances (green) stay in separate regions, with
+ * white space between them.
  */
 :root {
-  --bg: #faf7f8;
+  /* Neutrals, from the logo's greyscale ramp. */
+  --bg: #fafafa;
   --surface: #ffffff;
+  --ink: #111111;
+  --muted: #666666;
+  --line: #dddddd; /* the logo's own halo grey */
 
+  /* Mauve — chosen, not sampled. White text on --mauve is 5.2:1. */
   --mauve: #8c5e88;
   --mauve-deep: #634161;
   --mauve-wash: #f3ecf2;
 
-  --green: #1f9d5b;
-  --green-deep: #0c3a24;
-  --green-wash: #eaf6ef;
+  /*
+   * Greens, all from the iris.
+   *
+   * --green is the darker olive rather than the dominant #74862d, because
+   * white text on #74862d is only 4.1:1 and fails AA. #556600 is 6.4:1.
+   * --olive keeps the dominant iris colour for decorative fills that carry
+   * no text.
+   */
+  --green: #556600;
+  --green-deep: #434d1a;
+  --olive: #74862d;
+  --green-wash: #f1f4e4;
 
-  --ink: #191518;
-  --muted: #6f6570;
-  --line: #e7dfe5;
+  /*
+   * The template stroke has a different job from the brand greens: it has to
+   * stay legible drawn over skin. The logo's olives sit close to skin
+   * luminance, so this uses the iris HIGHLIGHT — still the artwork's own
+   * colour, but high enough in chroma to separate from a face.
+   */
+  --green-bright: #95b300;
 
-  --scrim: rgba(25, 21, 24, 0.55);
+  --scrim: rgba(17, 17, 17, 0.55);
 
   --radius: 10px;
   --radius-sm: 6px;
   --sidebar-w: 190px;
 
-  --shadow-modal: 0 24px 60px rgba(25, 21, 24, 0.28);
-  --shadow-panel: 0 1px 3px rgba(25, 21, 24, 0.06);
+  --shadow-modal: 0 24px 60px rgba(17, 17, 17, 0.28);
+  --shadow-panel: 0 1px 3px rgba(17, 17, 17, 0.06);
 }
