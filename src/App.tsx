@@ -1,302 +1,49 @@
-import { useEffect, useState } from 'react';
-import { LEFT_EYE, RIGHT_EYE, type EyeMetrics } from './landmarks';
-import { useFaceTracker } from './useFaceTracker';
-import type { TrackerStats } from './useFaceTracker';
-import type { MetricRange, RangeSnapshot } from './trackingQuality';
-import type { WingGeometry } from './wing';
+import { useState } from 'react';
+import { Logo } from './components/Logo.tsx';
+import { Draw } from './pages/Draw.tsx';
+import { Explore } from './pages/Explore.tsx';
+import { Home } from './pages/Home.tsx';
+import { navigate, useRoute, type Route } from './router.ts';
+import type { WingParams } from './wing.ts';
 import './App.css';
 
+const NAV: { route: Route; label: string }[] = [
+  { route: 'draw', label: 'draw' },
+  { route: 'explore', label: 'explore' },
+];
+
 export default function App() {
-  const { videoRef, canvasRef, status, error, stats, frozen, start, stop, resetRanges, toggleFreeze } =
-    useFaceTracker();
-
-  // Keyboard control: at application distance you cannot see the buttons.
-  useEffect(() => {
-    if (status !== 'running') return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        toggleFreeze();
-      } else if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        resetRanges();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [status, toggleFreeze, resetRanges]);
+  const route = useRoute();
+  // Lives here rather than in Draw so it survives navigating away and back.
+  const [wingParams, setWingParams] = useState<WingParams | null>(null);
 
   return (
-    <main className="app">
-      <header className="bar">
-        <h1>aEye — M1</h1>
-        <div className="controls">
-          {status === 'running' && (
-            <>
-              <button onClick={resetRanges}>Reset ranges (R)</button>
-              <button onClick={toggleFreeze} className={frozen ? 'active' : ''}>
-                {frozen ? 'Frozen — resume (space)' : 'Freeze (space)'}
-              </button>
-            </>
-          )}
-          {status === 'running' ? (
-            <button onClick={stop}>Stop</button>
-          ) : (
-            <button onClick={start} disabled={status === 'starting'}>
-              {status === 'starting' ? 'Starting…' : 'Start camera'}
-            </button>
-          )}
-          <span className={`status status-${status}`}>{frozen ? 'frozen' : status}</span>
-        </div>
-      </header>
-
-      {error && <p className="error">{error}</p>}
-
-      {status === 'running' && (
-        <p className="protocol">
-          Press <kbd>R</kbd> to reset, lean in and hold, sit back, then <kbd>space</kbd> to freeze
-          and read the min–max under each value. Capture runs at full frame rate, so a brief dip
-          still registers.
-        </p>
-      )}
-
-      <div className="stage">
-        {/* Mirrored for a selfie view. Landmark x is flipped to match in toCanvas(). */}
-        <video ref={videoRef} className="mirrored" playsInline muted />
-        <canvas ref={canvasRef} className="overlay" />
-        {status === 'idle' && !error && (
-          <p className="hint">Press Start camera. Video never leaves this device.</p>
-        )}
-      </div>
-
-      <DebugReadout stats={stats} />
-    </main>
-  );
-}
-
-function DebugReadout({ stats }: { stats: TrackerStats }) {
-  const { quality, ranges } = stats;
-  // Per-eye detail is hidden by default but kept intact — M2 needs it back.
-  const [showEyes, setShowEyes] = useState(false);
-
-  return (
-    <section className="debug">
-      <div className="panel">
-        <h2>Frame</h2>
-        <Row label="FPS" value={stats.fps.toFixed(1)} range={ranges.ranges.fps} digits={1} />
-        <Row
-          label="Resolution"
-          value={stats.frameSize.width ? `${stats.frameSize.width}×${stats.frameSize.height}` : '—'}
-        />
-        <Row label="Delegate" value={stats.delegate ?? '—'} />
-        <Row label="Landmarks" value={stats.landmarkCount || '—'} />
-        <Row label="Captured frames" value={ranges.samples || '—'} />
-      </div>
-
-      <div className="panel">
-        <h2>
-          Tracking confidence <span className="tag">derived</span>
-        </h2>
-        <Meter value={quality.score} />
-        <Row label="Score" value={quality.score.toFixed(2)} range={ranges.ranges.score} />
-        <Row label="Face present" value={quality.present ? 'yes' : 'no'} />
-        <Row label="Detection rate" value={quality.detectionRate.toFixed(2)} />
-        <Row
-          label="In-frame"
-          value={quality.inFrameRatio.toFixed(2)}
-          range={ranges.ranges.inFrame}
-        />
-        <Row
-          label="Stability"
-          value={quality.stability.toFixed(2)}
-          range={ranges.ranges.stability}
-        />
-        <p className="note">
-          MediaPipe does not expose a confidence score, so this is a proxy built from detection
-          rate, how much of the mesh is inside the frame, and frame-to-frame jitter.
-        </p>
-      </div>
-
-      <div className="panel">
-        <h2>
-          Face axis <span className="tag">derived</span>
-        </h2>
-        <Row
-          label="Canthal tilt"
-          value={stats.canthalTiltDeg === null ? '—' : `${stats.canthalTiltDeg.toFixed(1)}°`}
-          range={ranges.ranges.canthalTilt}
-          digits={1}
-          suffix="°"
-        />
-        <Row
-          label="Head roll"
-          value={stats.headRollDeg === null ? '—' : `${stats.headRollDeg.toFixed(1)}°`}
-          range={ranges.ranges.headRoll}
-          digits={1}
-          suffix="°"
-        />
-        <p className="note">
-          A head roll moves the two eye angles in opposite directions; a real canthal tilt moves
-          them the same way. So their mean is the tilt and half their difference is the roll.
-        </p>
-      </div>
-
-      <div className="panel">
-        <h2>
-          Wing anchors <span className="tag tag-m1">M1</span>
-        </h2>
-        <Row label="Angle offset" value={`${stats.wingSpec.angleOffsetDeg.toFixed(0)}° above axis`} />
-        <Row label="Length" value={`${stats.wingSpec.lengthRatio.toFixed(2)} × eye width`} />
-        <WingRows label="Left" wing={stats.leftWing} range={ranges.ranges.leftWingLength} />
-        <WingRows label="Right" wing={stats.rightWing} range={ranges.ranges.rightWingLength} />
-        <p className="note">
-          Origin is the outer canthus. The angle is stored as an offset from the measured canthal
-          axis and the length as a fraction of eye width, so the template follows head roll and
-          rescales between faces. Defaults are placeholders until the parameter controls exist.
-        </p>
-      </div>
-
-      <div className="panel panel-toggle">
-        <button className="linkish" onClick={() => setShowEyes((v) => !v)}>
-          {showEyes ? '− Hide' : '+ Show'} per-eye debug
+    <div className="shell">
+      <nav className="sidebar" aria-label="Main">
+        <button className="brand" onClick={() => navigate('home')} aria-current={route === 'home'}>
+          <Logo scale={2} />
+          <span className="wordmark">aEye</span>
         </button>
-      </div>
+        <ul className="nav">
+          {NAV.map(({ route: r, label }) => (
+            <li key={r}>
+              <button
+                className={`nav-item ${route === r ? 'is-active' : ''}`}
+                aria-current={route === r ? 'page' : undefined}
+                onClick={() => navigate(r)}
+              >
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
-      {/* Ordered to match the mirrored preview: screen-left panel = screen-left eye. */}
-      {showEyes && (
-        <>
-          <EyePanel
-            title="Left eye (subject) — left on screen"
-            indices={LEFT_EYE}
-            metrics={stats.left}
-            ranges={ranges}
-            prefix="left"
-          />
-          <EyePanel
-            title="Right eye (subject) — right on screen"
-            indices={RIGHT_EYE}
-            metrics={stats.right}
-            ranges={ranges}
-            prefix="right"
-          />
-        </>
-      )}
-    </section>
-  );
-}
-
-function WingRows({
-  label,
-  wing,
-  range,
-}: {
-  label: string;
-  wing: WingGeometry | null;
-  range?: MetricRange;
-}) {
-  return (
-    <>
-      <Row
-        label={`${label} length`}
-        value={wing ? `${wing.lengthPx.toFixed(1)} px` : '—'}
-        range={range}
-        digits={1}
-        suffix=" px"
-      />
-      <Row
-        label={`${label} on screen`}
-        value={wing ? `${wing.wingAngleDeg.toFixed(1)}°` : '—'}
-      />
-    </>
-  );
-}
-
-function EyePanel({
-  title,
-  indices,
-  metrics,
-  ranges,
-  prefix,
-}: {
-  title: string;
-  indices: typeof LEFT_EYE;
-  metrics: EyeMetrics | null;
-  ranges: RangeSnapshot;
-  prefix: 'left' | 'right';
-}) {
-  return (
-    <div className="panel">
-      <h2>{title}</h2>
-      <Row
-        label="Width"
-        value={metrics ? `${metrics.widthPx.toFixed(1)} px` : '—'}
-        range={ranges.ranges[`${prefix}Width`]}
-        digits={1}
-        suffix=" px"
-      />
-      <Row
-        label="Height"
-        value={metrics ? `${metrics.heightPx.toFixed(1)} px` : '—'}
-        range={ranges.ranges[`${prefix}Height`]}
-        digits={1}
-        suffix=" px"
-      />
-      <Row
-        label="Axis angle"
-        value={metrics ? `${metrics.angleDeg.toFixed(1)}°` : '—'}
-        range={ranges.ranges[`${prefix}Angle`]}
-        digits={1}
-        suffix="°"
-      />
-      <Row label="H/W ratio" value={metrics ? metrics.aspectRatio.toFixed(3) : '—'} />
-      <div className="indices">
-        <span>outer {indices.outerCanthus}</span>
-        <span>inner {indices.innerCanthus}</span>
-        <span>upper {indices.upperLid}</span>
-        <span>lower {indices.lowerLid}</span>
-      </div>
-      <p className="note">Positive angle = outer corner above inner corner.</p>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  range,
-  digits = 2,
-  suffix = '',
-}: {
-  label: string;
-  value: string | number;
-  range?: MetricRange;
-  digits?: number;
-  suffix?: string;
-}) {
-  return (
-    <div className="row">
-      <span>{label}</span>
-      <span className="value">
-        {value}
-        {range && (
-          <em className="range">
-            {range.min.toFixed(digits)}
-            {suffix} … {range.max.toFixed(digits)}
-            {suffix}
-          </em>
-        )}
-      </span>
-    </div>
-  );
-}
-
-function Meter({ value }: { value: number }) {
-  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
-  const hue = Math.round(value * 120); // red -> green
-  return (
-    <div className="meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      <div style={{ width: `${pct}%`, background: `hsl(${hue} 80% 50%)` }} />
+      <main className="content">
+        {route === 'home' && <Home />}
+        {route === 'draw' && <Draw wingParams={wingParams} onWingParams={setWingParams} />}
+        {route === 'explore' && <Explore />}
+      </main>
     </div>
   );
 }

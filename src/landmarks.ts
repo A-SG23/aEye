@@ -1,5 +1,5 @@
 /**
- * Eye landmark indices and the geometry M0 reports.
+ * Eye landmark indices and the measurement geometry built on them.
  *
  * Indices below were extracted from the shipped MediaPipe constants
  * (`FaceLandmarker.FACE_LANDMARKS_LEFT_EYE` / `..._RIGHT_EYE`) rather than
@@ -36,6 +36,14 @@ export interface EyeIndices {
   lowerLid: number;
   /** Full 16-point lid ring, in walk order starting at the outer canthus. */
   ring: readonly number[];
+}
+
+/**
+ * The upper lid margin, outer canthus -> inner canthus. It is the first half
+ * of the ring walk, which is ordered that way by construction.
+ */
+export function upperLidPath(eye: EyeIndices): readonly number[] {
+  return eye.ring.slice(0, 9);
 }
 
 /**
@@ -84,6 +92,72 @@ export function toCanvas(
   height: number,
 ): CanvasPoint {
   return { x: (1 - point.x) * width, y: point.y * height };
+}
+
+/** Resolve a landmark index list to canvas points. */
+export function pathPoints(
+  landmarks: NormalizedPoint[],
+  indices: readonly number[],
+  width: number,
+  height: number,
+): CanvasPoint[] | null {
+  if (indices.some((i) => landmarks[i] === undefined)) return null;
+  return indices.map((i) => toCanvas(landmarks[i], width, height));
+}
+
+/**
+ * Walk a polyline by arc length and return the point at `ratio` along it.
+ * Used to place the upper wing anchor a fixed fraction in from the outer
+ * canthus, so it rides the lid rather than floating at a fixed pixel offset.
+ */
+export function pointAlongPath(path: CanvasPoint[], ratio: number): CanvasPoint {
+  if (path.length === 0) throw new Error('pointAlongPath: empty path');
+  if (path.length === 1) return path[0];
+
+  const segments: number[] = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const len = Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+    segments.push(len);
+    total += len;
+  }
+  if (total === 0) return path[0];
+
+  const target = Math.max(0, Math.min(1, ratio)) * total;
+  let walked = 0;
+  for (let i = 0; i < segments.length; i++) {
+    if (walked + segments[i] >= target) {
+      const t = segments[i] === 0 ? 0 : (target - walked) / segments[i];
+      return {
+        x: path[i].x + (path[i + 1].x - path[i].x) * t,
+        y: path[i].y + (path[i + 1].y - path[i].y) * t,
+      };
+    }
+    walked += segments[i];
+  }
+  return path[path.length - 1];
+}
+
+/** Truncate a polyline at `ratio` along its arc length, keeping the start. */
+export function pathUpTo(path: CanvasPoint[], ratio: number): CanvasPoint[] {
+  const end = pointAlongPath(path, ratio);
+  const out: CanvasPoint[] = [path[0]];
+  let total = 0;
+  const segments: number[] = [];
+  for (let i = 1; i < path.length; i++) {
+    const len = Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+    segments.push(len);
+    total += len;
+  }
+  const target = Math.max(0, Math.min(1, ratio)) * total;
+  let walked = 0;
+  for (let i = 0; i < segments.length; i++) {
+    if (walked + segments[i] >= target) break;
+    walked += segments[i];
+    out.push(path[i + 1]);
+  }
+  out.push(end);
+  return out;
 }
 
 export interface EyeMetrics {

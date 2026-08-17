@@ -3,12 +3,12 @@
    math and vietnamese that this UI never renders. */
 @import '@fontsource/noto-serif/latin-400.css';
 @import '@fontsource/noto-serif/latin-600.css';
+@import './theme.css';
 
 :root {
-  color-scheme: dark;
-  /* Noto Serif throughout, including the numeric readouts. */
+  color-scheme: light;
   font-family: 'Noto Serif', Georgia, 'Times New Roman', serif;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
 }
 
@@ -18,9 +18,10 @@
 
 body {
   margin: 0;
-  background: #0d0d0d;
-  color: #eaeaea;
+  background: var(--bg);
+  color: var(--ink);
   font-family: inherit;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -29,4 +30,9 @@ kbd,
 select,
 textarea {
   font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--mauve);
+  outline-offset: 2px;
 }

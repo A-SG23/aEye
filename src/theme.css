@@ -1,0 +1,37 @@
+/**
+ * Theme tokens.
+ *
+ * --ink, --green and --green-deep are sampled straight from the logo's pixel
+ * palette (see scripts/make-logo.mjs). Mauve does not appear in the logo, so
+ * it is chosen to sit beside that green without competing: same perceptual
+ * weight, opposite temperature.
+ *
+ * Mauve and green never touch at full saturation anywhere in the UI — the
+ * sidebar keeps nav (mauve) and template affordances (green) in separate
+ * regions, and panels put white space between them.
+ */
+:root {
+  --bg: #faf7f8;
+  --surface: #ffffff;
+
+  --mauve: #8c5e88;
+  --mauve-deep: #634161;
+  --mauve-wash: #f3ecf2;
+
+  --green: #1f9d5b;
+  --green-deep: #0c3a24;
+  --green-wash: #eaf6ef;
+
+  --ink: #191518;
+  --muted: #6f6570;
+  --line: #e7dfe5;
+
+  --scrim: rgba(25, 21, 24, 0.55);
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --sidebar-w: 190px;
+
+  --shadow-modal: 0 24px 60px rgba(25, 21, 24, 0.28);
+  --shadow-panel: 0 1px 3px rgba(25, 21, 24, 0.06);
+}

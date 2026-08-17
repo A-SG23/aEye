@@ -11,7 +11,9 @@
  * we can actually observe. The three components are reported separately so a
  * low score is diagnosable rather than mysterious.
  */
-import type { NormalizedPoint } from './landmarks';
+// Explicit extension: this module is also pulled into the Node-side check
+// project, where nodenext resolution requires it.
+import type { NormalizedPoint } from './landmarks.ts';
 
 /** Frames of history used for the rolling detection rate. */
 const WINDOW = 30;
@@ -182,6 +184,97 @@ export function decomposeAngles(
     canthalTiltDeg: (rightAngleDeg + leftAngleDeg) / 2,
     headRollDeg: (rightAngleDeg - leftAngleDeg) / 2,
   };
+}
+
+/**
+ * Left/right angle disagreement, and whether the template should be frozen.
+ *
+ * A note on this signal. Because the per-eye angle convention is normalized
+ * (positive = outer corner higher), the raw split between the two eyes is
+ * arithmetically twice the head roll — see decomposeAngles. Thresholding on
+ * the RAW split would freeze the template every time the user tilts their
+ * head, which is the one thing they inevitably do while applying eyeliner.
+ *
+ * What actually signals unreliable measurement is the split becoming
+ * UNSTABLE. A real head roll changes smoothly; degrading landmarks make the
+ * split jitter. So the gate watches volatility — mean absolute deviation of
+ * the disagreement over a short window — rather than its magnitude.
+ */
+const DISAGREEMENT_WINDOW = 15;
+
+export interface GateThresholds {
+  minDetectionRate: number;
+  minInFrame: number;
+  minStability: number;
+  maxDisagreementVolatilityDeg: number;
+}
+
+export const DEFAULT_GATE: GateThresholds = {
+  minDetectionRate: 0.6,
+  minInFrame: 0.7,
+  minStability: 0.35,
+  maxDisagreementVolatilityDeg: 3.5,
+};
+
+export interface GateState {
+  /** True when the live measurement is trustworthy enough to redraw. */
+  ok: boolean;
+  /** Which signals are failing, for the indicator and the metrics panel. */
+  reasons: string[];
+  disagreementDeg: number;
+  disagreementVolatilityDeg: number;
+}
+
+export class TemplateGate {
+  private history: number[] = [];
+  private thresholds: GateThresholds;
+
+  constructor(thresholds: GateThresholds = DEFAULT_GATE) {
+    this.thresholds = thresholds;
+  }
+
+  update(
+    quality: TrackingQuality,
+    rightAngleDeg: number | null,
+    leftAngleDeg: number | null,
+  ): GateState {
+    const bothEyes = rightAngleDeg !== null && leftAngleDeg !== null;
+    const disagreementDeg = bothEyes ? Math.abs(rightAngleDeg - leftAngleDeg) : 0;
+
+    if (bothEyes) {
+      this.history.push(disagreementDeg);
+      if (this.history.length > DISAGREEMENT_WINDOW) this.history.shift();
+    } else {
+      this.history.length = 0;
+    }
+
+    const volatility = meanAbsoluteDeviation(this.history);
+    const reasons: string[] = [];
+
+    if (!quality.present || !bothEyes) reasons.push('no face');
+    if (quality.detectionRate < this.thresholds.minDetectionRate) reasons.push('dropped frames');
+    if (quality.inFrameRatio < this.thresholds.minInFrame) reasons.push('face cropped');
+    if (quality.stability < this.thresholds.minStability) reasons.push('jitter');
+    // Only meaningful once the window has filled.
+    if (
+      this.history.length >= DISAGREEMENT_WINDOW &&
+      volatility > this.thresholds.maxDisagreementVolatilityDeg
+    ) {
+      reasons.push('eye angles unstable');
+    }
+
+    return { ok: reasons.length === 0, reasons, disagreementDeg, disagreementVolatilityDeg: volatility };
+  }
+
+  reset(): void {
+    this.history.length = 0;
+  }
+}
+
+function meanAbsoluteDeviation(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return values.reduce((a, b) => a + Math.abs(b - mean), 0) / values.length;
 }
 
 /**

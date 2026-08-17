@@ -1,17 +1,33 @@
 /**
- * Geometry checks for the M0 measurements. Run: `npm run check`.
+ * Geometry checks for the measurement and template maths. Run: `npm run check`.
  *
- * These pin down the two things that are easy to get backwards: which side of
- * the mirrored preview each eye lands on, and the sign of the canthal tilt.
+ * These pin down the things that are easy to get backwards: which side of the
+ * mirrored preview each eye lands on, the sign of the canthal tilt, and that
+ * the stored wing ratios really are invariant to head roll and scale.
  */
 import {
   LEFT_EYE,
   RIGHT_EYE,
   measureEye,
+  pathPoints,
+  pointAlongPath,
   toCanvas,
+  upperLidPath,
   type NormalizedPoint,
 } from '../src/landmarks.ts';
-import { resolveWing, type WingSpec } from '../src/wing.ts';
+import {
+  canvasToLocal,
+  curvatureFromPoint,
+  eyeFrame,
+  localToCanvas,
+  resolveWing,
+  type WingParams,
+} from '../src/wing.ts';
+import {
+  TemplateGate,
+  decomposeAngles,
+  type TrackingQuality,
+} from '../src/trackingQuality.ts';
 
 const W = 1280;
 const H = 720;
@@ -45,21 +61,29 @@ function makeFace(opts: {
 }): NormalizedPoint[] {
   const pts: NormalizedPoint[] = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5 }));
 
-  // Subject's right eye: low x. Outer canthus is the one further from the nose.
-  const rOuterX = 0.30;
-  const rInnerX = 0.42;
-  pts[RIGHT_EYE.outerCanthus] = { x: rOuterX, y: 0.4 - opts.rightTiltUp };
-  pts[RIGHT_EYE.innerCanthus] = { x: rInnerX, y: 0.4 };
-  pts[RIGHT_EYE.upperLid] = { x: 0.36, y: 0.37 };
-  pts[RIGHT_EYE.lowerLid] = { x: 0.36, y: 0.43 };
+  /**
+   * Lay a whole eye down: the 9-point upper lid margin as an arc from outer to
+   * inner canthus, plus the lower lid point. The full margin matters because
+   * the upper wing anchor rides it.
+   */
+  const buildEye = (eye: typeof RIGHT_EYE, outerX: number, innerX: number, tiltUp: number) => {
+    const outerY = 0.4 - tiltUp;
+    const innerY = 0.4;
+    const path = upperLidPath(eye);
+    for (let i = 0; i < path.length; i++) {
+      const t = i / (path.length - 1);
+      pts[path[i]] = {
+        x: outerX + (innerX - outerX) * t,
+        y: outerY + (innerY - outerY) * t - 0.03 * Math.sin(Math.PI * t),
+      };
+    }
+    pts[eye.lowerLid] = { x: (outerX + innerX) / 2, y: 0.43 };
+  };
 
+  // Subject's right eye: low x. Outer canthus is the one further from the nose.
+  buildEye(RIGHT_EYE, 0.3, 0.42, opts.rightTiltUp);
   // Subject's left eye: high x. Outer canthus further from the nose = higher x.
-  const lInnerX = 0.58;
-  const lOuterX = 0.70;
-  pts[LEFT_EYE.outerCanthus] = { x: lOuterX, y: 0.4 - opts.leftTiltUp };
-  pts[LEFT_EYE.innerCanthus] = { x: lInnerX, y: 0.4 };
-  pts[LEFT_EYE.upperLid] = { x: 0.64, y: 0.37 };
-  pts[LEFT_EYE.lowerLid] = { x: 0.64, y: 0.43 };
+  buildEye(LEFT_EYE, 0.7, 0.58, opts.leftTiltUp);
 
   if (opts.rollDeg) {
     // A real head roll is a RIGID rotation in pixel space. Normalized x and y
@@ -173,87 +197,177 @@ console.log('\nhead roll vs. true canthal tilt');
   );
 }
 
-console.log('\nM1 wing anchor geometry');
+console.log('\nwing template geometry');
 {
-  const spec: WingSpec = { angleOffsetDeg: 20, lengthRatio: 0.3 };
+  const params: WingParams = {
+    tipLength: 0.34,
+    tipAngleDeg: 24,
+    upperCurvature: 0.14,
+    lowerCurvature: -0.05,
+    upperAnchorRatio: 0.28,
+  };
   const face = makeFace({ rightTiltUp: 0.01, leftTiltUp: 0.01 });
   const rEye = measureEye(face, RIGHT_EYE, W, H)!;
   const lEye = measureEye(face, LEFT_EYE, W, H)!;
-  const rWing = resolveWing(rEye, spec);
-  const lWing = resolveWing(lEye, spec);
 
-  check('origin is exactly the outer canthus', rWing.origin === rEye.outer);
+  // --- the local frame ----------------------------------------------------
+  const rFrame = eyeFrame(rEye);
+  const lFrame = eyeFrame(lEye);
 
+  const dot = (p: { x: number; y: number }, q: { x: number; y: number }) => p.x * q.x + p.y * q.y;
+  const len = (p: { x: number; y: number }) => Math.hypot(p.x, p.y);
+
+  check('frame basis is orthonormal', near(len(rFrame.u), 1, 1e-9) && near(len(rFrame.v), 1, 1e-9) && near(dot(rFrame.u, rFrame.v), 0, 1e-9));
+  check('u points away from the nose on both eyes', (rFrame.u.x > 0) !== (lFrame.u.x > 0));
+  check('v points toward the brow on both eyes', rFrame.v.y < 0 && lFrame.v.y < 0, `R=${rFrame.v.y.toFixed(3)} L=${lFrame.v.y.toFixed(3)}`);
+
+  const probe = { a: 0.31, b: 0.17 };
+  const round = canvasToLocal(rFrame, localToCanvas(rFrame, probe));
+  check('local <-> canvas round-trips', near(round.a, probe.a, 1e-9) && near(round.b, probe.b, 1e-9));
+
+  // --- mirror symmetry ----------------------------------------------------
+  const rWing = resolveWing(face, RIGHT_EYE, rEye, params, W, H)!;
+  const lWing = resolveWing(face, LEFT_EYE, lEye, params, W, H)!;
+
+  check('same params resolve on both eyes', rWing !== null && lWing !== null);
   check(
-    'tip is ABOVE the outer canthus for both eyes',
-    rWing.tip.y < rWing.origin.y && lWing.tip.y < lWing.origin.y,
-    `R dy=${(rWing.tip.y - rWing.origin.y).toFixed(1)} L dy=${(lWing.tip.y - lWing.origin.y).toFixed(1)}`,
-  );
-
-  check(
-    'tip extends AWAY from the nose for both eyes',
-    Math.abs(rWing.tip.x - rEye.inner.x) > Math.abs(rWing.origin.x - rEye.inner.x) &&
-      Math.abs(lWing.tip.x - lEye.inner.x) > Math.abs(lWing.origin.x - lEye.inner.x),
-  );
-
-  const rLen = Math.hypot(rWing.tip.x - rWing.origin.x, rWing.tip.y - rWing.origin.y);
-  check(
-    'tip distance equals lengthRatio x eye width',
-    near(rLen, rEye.widthPx * spec.lengthRatio, 1e-9),
-    `${rLen.toFixed(3)} vs ${(rEye.widthPx * spec.lengthRatio).toFixed(3)}`,
-  );
-
-  check(
-    'wing angle is exactly canthal axis + offset',
-    near(rWing.wingAngleDeg - rWing.canthalAngleDeg, spec.angleOffsetDeg, 1e-9),
-  );
-
-  // Mirror symmetry: a symmetric face must produce mirror-image wings.
-  check(
-    'symmetric face yields symmetric wing angles',
-    near(rWing.wingAngleDeg, lWing.wingAngleDeg, 1e-9),
-    `R=${rWing.wingAngleDeg.toFixed(3)} L=${lWing.wingAngleDeg.toFixed(3)}`,
+    'identical params give mirrored tips (same height, opposite side)',
+    near(rWing.tip.y, lWing.tip.y, 1e-6) && (rWing.tip.x - W / 2) * (lWing.tip.x - W / 2) < 0,
+    `Ry=${rWing.tip.y.toFixed(2)} Ly=${lWing.tip.y.toFixed(2)}`,
   );
   check(
-    'symmetric face yields mirrored tip heights',
-    near(rWing.tip.y, lWing.tip.y, 1e-9),
+    'mirrored control points too',
+    near(rWing.upperControl.y, lWing.upperControl.y, 1e-6) &&
+      near(rWing.lowerControl.y, lWing.lowerControl.y, 1e-6),
+  );
+  check('tip sits above the outer canthus on both eyes', rWing.tip.y < rWing.lowerAnchor.y && lWing.tip.y < lWing.lowerAnchor.y);
+  check('lower anchor is exactly the outer canthus', rWing.lowerAnchor === rEye.outer);
+
+  // --- stored ratios are dimensionless ------------------------------------
+  const tipLocal = canvasToLocal(rFrame, rWing.tip);
+  check('tip length recovers as a fraction of eye width', near(Math.hypot(tipLocal.a, tipLocal.b), params.tipLength, 1e-9));
+  check(
+    'tip angle recovers as an offset from the canthal axis',
+    near((Math.atan2(tipLocal.b, tipLocal.a) * 180) / Math.PI, params.tipAngleDeg, 1e-9),
   );
 
-  // THE property the spec exists for: roll the head and the wing must keep the
-  // same angle relative to the face, even though its screen angle changes.
-  const rolled = makeFace({ rightTiltUp: 0.01, leftTiltUp: 0.01, rollDeg: 12 });
+  const upperLocal = canvasToLocal(rFrame, rWing.upperAnchor);
+  check(
+    'upper curvature round-trips through the control point',
+    near(curvatureFromPoint(upperLocal, tipLocal, canvasToLocal(rFrame, rWing.upperControl)), params.upperCurvature, 1e-9),
+  );
+  check(
+    'lower curvature round-trips through the control point',
+    near(curvatureFromPoint({ a: 0, b: 0 }, tipLocal, canvasToLocal(rFrame, rWing.lowerControl)), params.lowerCurvature, 1e-9),
+  );
+  check(
+    'zero curvature puts the control on the chord midpoint',
+    (() => {
+      const flat = resolveWing(face, RIGHT_EYE, rEye, { ...params, lowerCurvature: 0 }, W, H)!;
+      const mid = { x: (flat.lowerAnchor.x + flat.tip.x) / 2, y: (flat.lowerAnchor.y + flat.tip.y) / 2 };
+      return near(flat.lowerControl.x, mid.x, 1e-6) && near(flat.lowerControl.y, mid.y, 1e-6);
+    })(),
+  );
+
+  // --- head roll ----------------------------------------------------------
+  const rolled = makeFace({ rightTiltUp: 0.01, leftTiltUp: 0.01, rollDeg: 14 });
   const rEyeRolled = measureEye(rolled, RIGHT_EYE, W, H)!;
-  const rWingRolled = resolveWing(rEyeRolled, spec);
+  const rWingRolled = resolveWing(rolled, RIGHT_EYE, rEyeRolled, params, W, H)!;
+  const rolledLocal = canvasToLocal(eyeFrame(rEyeRolled), rWingRolled.tip);
 
   check(
-    'roll changes the wing screen angle (it tracks the head)',
-    Math.abs(rWingRolled.wingAngleDeg - rWing.wingAngleDeg) > 5,
-    `${rWing.wingAngleDeg.toFixed(2)} -> ${rWingRolled.wingAngleDeg.toFixed(2)}`,
+    'roll moves the wing in image space',
+    Math.hypot(rWingRolled.tip.x - rWing.tip.x, rWingRolled.tip.y - rWing.tip.y) > 5,
   );
   check(
-    'but the offset from the canthal axis is UNCHANGED by roll',
-    near(rWingRolled.wingAngleDeg - rWingRolled.canthalAngleDeg, spec.angleOffsetDeg, 1e-9),
+    'but the stored ratios are UNCHANGED by roll',
+    near(Math.hypot(rolledLocal.a, rolledLocal.b), params.tipLength, 1e-9) &&
+      near((Math.atan2(rolledLocal.b, rolledLocal.a) * 180) / Math.PI, params.tipAngleDeg, 1e-9),
   );
 
-  // Scale invariance: the same spec on a bigger face gives a proportional wing.
+  // --- scale --------------------------------------------------------------
   const bigEye = measureEye(face, RIGHT_EYE, W * 2, H * 2)!;
-  const bigWing = resolveWing(bigEye, spec);
+  const bigWing = resolveWing(face, RIGHT_EYE, bigEye, params, W * 2, H * 2)!;
+  const bigLocal = canvasToLocal(eyeFrame(bigEye), bigWing.tip);
+  const smallLen = Math.hypot(rWing.tip.x - rWing.lowerAnchor.x, rWing.tip.y - rWing.lowerAnchor.y);
+  const bigLen = Math.hypot(bigWing.tip.x - bigWing.lowerAnchor.x, bigWing.tip.y - bigWing.lowerAnchor.y);
+  check('a doubled face gives a doubled wing', near(bigLen / smallLen, 2, 1e-6), `${smallLen.toFixed(1)} -> ${bigLen.toFixed(1)}`);
+  check('with the ratios unchanged', near(Math.hypot(bigLocal.a, bigLocal.b), params.tipLength, 1e-9));
+
+  // --- anchors ride the lid ------------------------------------------------
+  const lidPts = pathPoints(face, upperLidPath(RIGHT_EYE), W, H)!;
+  check('upper anchor lies on the lid margin', near(pointAlongPath(lidPts, params.upperAnchorRatio).x, rWing.upperAnchor.x, 1e-9));
+  check('ratio 0 puts the upper anchor at the outer canthus', near(pointAlongPath(lidPts, 0).x, rEye.outer.x, 1e-9));
+  check('lid return path closes back toward the outer canthus', rWing.lidReturn.length >= 2);
+}
+
+console.log('\ntemplate freeze gate');
+{
+  const good: TrackingQuality = {
+    score: 0.95,
+    detectionRate: 1,
+    inFrameRatio: 1,
+    stability: 0.95,
+    present: true,
+  };
+
+  // Fill the window so the volatility term is live.
+  const run = (angles: Array<[number, number]>, quality: TrackingQuality = good) => {
+    const gate = new TemplateGate();
+    let last = gate.update(quality, angles[0][0], angles[0][1]);
+    for (const [r, l] of angles) last = gate.update(quality, r, l);
+    return last;
+  };
+
+  const steady = Array.from({ length: 30 }, () => [3, 3] as [number, number]);
+  check('steady, well-tracked eyes pass the gate', run(steady).ok);
+
+  // A held head tilt: the split is LARGE (2x the roll) but perfectly stable.
+  // Thresholding on magnitude would freeze here, which is the bug being avoided.
+  const tilted = Array.from({ length: 30 }, () => [18, -12] as [number, number]);
+  const tiltedState = run(tilted);
   check(
-    'length scales with the face, angle does not',
-    near(bigWing.lengthPx / rWing.lengthPx, 2, 1e-6) &&
-      near(bigWing.wingAngleDeg, rWing.wingAngleDeg, 1e-9),
-    `lengthPx ${rWing.lengthPx.toFixed(1)} -> ${bigWing.lengthPx.toFixed(1)}`,
+    'a large but steady head tilt does NOT freeze the template',
+    tiltedState.ok,
+    `split=${tiltedState.disagreementDeg.toFixed(1)}° volatility=${tiltedState.disagreementVolatilityDeg.toFixed(2)}°`,
   );
 
-  // A zero-offset wing must lie exactly along the canthal axis.
-  const flat = resolveWing(rEye, { angleOffsetDeg: 0, lengthRatio: 1 });
-  const axisDx = rEye.outer.x - rEye.inner.x;
-  const axisDy = rEye.outer.y - rEye.inner.y;
-  const wingDx = flat.tip.x - flat.origin.x;
-  const wingDy = flat.tip.y - flat.origin.y;
+  // Same average split, but thrashing frame to frame.
+  const jittery = Array.from({ length: 30 }, (_, i) =>
+    i % 2 === 0 ? ([18, -12] as [number, number]) : ([2, 1] as [number, number]),
+  );
+  const jitteryState = run(jittery);
   check(
-    'zero offset lies along the canthal axis (cross product ~ 0)',
-    Math.abs(axisDx * wingDy - axisDy * wingDx) < 1e-6,
+    'an unstable split DOES freeze the template',
+    !jitteryState.ok && jitteryState.reasons.includes('eye angles unstable'),
+    `volatility=${jitteryState.disagreementVolatilityDeg.toFixed(2)}°`,
+  );
+
+  check(
+    'a cropped face freezes the template',
+    run(steady, { ...good, inFrameRatio: 0.4 }).reasons.includes('face cropped'),
+  );
+  check(
+    'dropped frames freeze the template',
+    run(steady, { ...good, detectionRate: 0.2 }).reasons.includes('dropped frames'),
+  );
+  check(
+    'jitter freezes the template',
+    run(steady, { ...good, stability: 0.1 }).reasons.includes('jitter'),
+  );
+  check('a missing face freezes the template', (() => {
+    const gate = new TemplateGate();
+    return gate.update({ ...good, present: false }, null, null).reasons.includes('no face');
+  })());
+
+  check(
+    'the split is exactly twice the head roll',
+    (() => {
+      const gate = new TemplateGate();
+      const s = gate.update(good, 18, -12);
+      const roll = decomposeAngles(18, -12).headRollDeg;
+      return near(s.disagreementDeg, Math.abs(2 * roll), 1e-9);
+    })(),
   );
 }
 
