@@ -279,6 +279,70 @@
   font-size: 13px;
 }
 
+/*
+ * First-run call to action, floated over the feed. The wrapper ignores pointer
+ * events so it never steals clicks from the video area; only the button takes
+ * them back.
+ */
+.stage-cta {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  animation: stage-cta-in 260ms ease-out both;
+}
+
+.stage-cta-btn {
+  pointer-events: auto;
+  font-size: 17px;
+  padding: 13px 28px;
+  border-radius: 999px;
+  box-shadow: 0 6px 22px rgba(17, 17, 17, 0.45);
+}
+
+/* Sits on live video, so it carries its own backing rather than trusting a
+   text-shadow to survive whatever happens to be behind it. */
+.stage-cta-note {
+  margin: 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.62);
+  color: #fff;
+  font-size: 13px;
+  backdrop-filter: blur(2px);
+}
+
+@keyframes stage-cta-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Bottom caption. Decorative, so it never takes pointer events. */
+.stage-smile {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 10px rgba(17, 17, 17, 0.25);
+}
+
 .error {
   margin: 0;
   padding: 10px 13px;

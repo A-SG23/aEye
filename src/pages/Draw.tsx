@@ -67,9 +67,9 @@ export function Draw({
               {status === 'starting' ? 'Starting…' : 'Start camera'}
             </button>
           )}
-          {running && (
+          {running && wingParams && (
             <button className="btn btn-primary" onClick={openDesigner}>
-              Set wing shape
+              Change wing shape
             </button>
           )}
         </div>
@@ -108,6 +108,18 @@ export function Draw({
             <span className="muted-line">Video never leaves this device.</span>
           </p>
         )}
+
+        {/* First run has nothing to look at yet, so point at the next step. */}
+        {running && !wingParams && (
+          <div className="stage-cta">
+            <button className="btn btn-primary btn-lg stage-cta-btn" onClick={openDesigner}>
+              Set wing shape!
+            </button>
+            <p className="stage-cta-note">we&rsquo;ll freeze a frame so you can shape it</p>
+          </div>
+        )}
+
+        {running && <p className="stage-smile">Smile!</p>}
       </div>
 
       {showMetrics && (
