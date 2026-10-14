@@ -21,6 +21,7 @@ import {
 } from '../wing.ts';
 import { COLORS, traceWing } from '../draw.ts';
 import type { StillFrame } from '../useFaceTracker.ts';
+import { WingPresets } from './WingPresets.tsx';
 
 /** Logical design space. Handles are positioned as percentages of it. */
 const VIEW_W = 100;
@@ -61,6 +62,9 @@ export function WingDesigner({
   onRetake,
 }: WingDesignerProps) {
   const [params, setParams] = useState<WingParams>(initialParams);
+  // Which preset the current params came from, if any. Cleared as soon as a
+  // handle is touched, since the shape is no longer that preset.
+  const [activePreset, setActivePreset] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<HandleId | null>(null);
@@ -202,6 +206,7 @@ export function WingDesigner({
       if (!view || !frame || !wing) return;
       const stillPoint = view.fromView(viewPoint);
       const local = canvasToLocal(frame, stillPoint);
+      setActivePreset(null);
 
       setParams((prev) => {
         if (id === 'tip') {
@@ -335,6 +340,14 @@ export function WingDesigner({
             ))}
           </div>
         )}
+
+        <WingPresets
+          active={activePreset}
+          onPick={(preset) => {
+            setParams(preset.params);
+            setActivePreset(preset.id);
+          }}
+        />
 
         <p className="designer-hint">
           Drag the three handles, or focus one and nudge with the arrow keys. Hold shift for

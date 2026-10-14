@@ -219,3 +219,86 @@ export function curvatureFromPoint(
   const perp = { a: -db / len, b: da / len };
   return ((dragged.a - mid.a) * perp.a + (dragged.b - mid.b) * perp.b) / len;
 }
+
+/**
+ * Starting points offered in the designer. Each is a complete parameter set,
+ * so picking one is just a state swap — nothing is locked in until the user
+ * presses draw, and they can keep switching or hand-adjust afterwards.
+ */
+export interface WingPreset {
+  id: string;
+  name: string;
+  blurb: string;
+  params: WingParams;
+}
+
+export const WING_PRESETS: readonly WingPreset[] = [
+  {
+    id: 'short',
+    name: 'Short wing',
+    blurb: 'a small flick, close to the lash line',
+    params: {
+      tipLength: 0.22,
+      tipAngleDeg: 22,
+      upperCurvature: 0.09,
+      lowerCurvature: -0.04,
+      upperAnchorRatio: 0.22,
+    },
+  },
+  {
+    id: 'long',
+    name: 'Long wing',
+    blurb: 'same angle, carried further out',
+    params: {
+      tipLength: 0.46,
+      tipAngleDeg: 24,
+      upperCurvature: 0.12,
+      lowerCurvature: -0.05,
+      upperAnchorRatio: 0.3,
+    },
+  },
+  {
+    id: 'dramatic',
+    name: 'Dramatic curve',
+    blurb: 'steeper, with a deep sweep',
+    params: {
+      tipLength: 0.6,
+      tipAngleDeg: 34,
+      upperCurvature: 0.34,
+      lowerCurvature: -0.2,
+      upperAnchorRatio: 0.4,
+    },
+  },
+];
+
+/**
+ * Resolve a wing against a synthetic, perfectly level eye of unit width.
+ * Used by the preset thumbnails, which need the real curve maths but have no
+ * face to measure.
+ */
+export function previewGeometry(params: WingParams): {
+  upperAnchor: LocalPoint;
+  lowerAnchor: LocalPoint;
+  tip: LocalPoint;
+  upperControl: LocalPoint;
+  lowerControl: LocalPoint;
+} {
+  const radians = (params.tipAngleDeg * Math.PI) / 180;
+  const tip: LocalPoint = {
+    a: params.tipLength * Math.cos(radians),
+    b: params.tipLength * Math.sin(radians),
+  };
+  // A stylised lid: the anchor rides inward and slightly up as the ratio grows.
+  const upperAnchor: LocalPoint = {
+    a: -params.upperAnchorRatio,
+    b: 0.1 * Math.sin(Math.PI * Math.min(1, params.upperAnchorRatio * 1.6)),
+  };
+  const lowerAnchor: LocalPoint = { a: 0, b: 0 };
+  return {
+    upperAnchor,
+    lowerAnchor,
+    tip,
+    upperControl: controlPoint(upperAnchor, tip, params.upperCurvature),
+    lowerControl: controlPoint(lowerAnchor, tip, params.lowerCurvature),
+  };
+}

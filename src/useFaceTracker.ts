@@ -15,6 +15,7 @@ import {
 } from './landmarks.ts';
 import { resolveWing, type WingGeometry, type WingParams } from './wing.ts';
 import { drawOverlay } from './draw.ts';
+import { LandmarkSmoother } from './smoothing.ts';
 import {
   EMPTY_RANGES,
   FpsMeter,
@@ -115,6 +116,7 @@ export function useFaceTracker(options: TrackerOptions) {
   const rangesRef = useRef(new RangeAccumulator());
   const frozenRef = useRef(false);
   const delegateRef = useRef<'GPU' | 'CPU' | null>(null);
+  const smootherRef = useRef(new LandmarkSmoother());
   const latestLandmarksRef = useRef<NormalizedPoint[] | null>(null);
   /** Last template we trust, kept so degraded tracking can hold rather than jump. */
   const lastGoodWingsRef = useRef<{ left: WingGeometry | null; right: WingGeometry | null }>({
@@ -143,6 +145,7 @@ export function useFaceTracker(options: TrackerOptions) {
     fpsRef.current.reset();
     qualityRef.current.reset();
     gateRef.current.reset();
+    smootherRef.current.reset();
     rangesRef.current.reset();
     frozenRef.current = false;
     lastTimestampRef.current = -1;
@@ -174,7 +177,11 @@ export function useFaceTracker(options: TrackerOptions) {
         canvas.height = video.videoHeight;
       }
       const result = landmarker.detectForVideo(video, timestamp);
-      landmarks = result.faceLandmarks[0] ?? null;
+      const raw = result.faceLandmarks[0] ?? null;
+      // Smooth before anything reads the landmarks, so the metrics, the
+      // template and the debug cloud all agree on one steady set of points.
+      landmarks = raw ? smootherRef.current.smooth(raw, timestamp) : null;
+      if (!raw) smootherRef.current.reset();
     }
     latestLandmarksRef.current = landmarks;
 

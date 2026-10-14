@@ -23,6 +23,7 @@ import {
   resolveWing,
   type WingParams,
 } from '../src/wing.ts';
+import { LandmarkSmoother } from '../src/smoothing.ts';
 import {
   TemplateGate,
   decomposeAngles,
@@ -369,6 +370,58 @@ console.log('\ntemplate freeze gate');
       return near(s.disagreementDeg, Math.abs(2 * roll), 1e-9);
     })(),
   );
+}
+
+console.log('\nlandmark smoothing');
+{
+  const sd = (xs: number[]) => {
+    const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+    return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
+  };
+  // Deterministic pseudo-noise so the check cannot flake.
+  let seed = 12345;
+  const noise = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return (seed / 2147483648 - 0.5) * 0.004; // +/-2e-3, typical landmark jitter
+  };
+
+  // (a) A still face: smoothing should cut the wobble substantially.
+  const sm = new LandmarkSmoother();
+  const rawStill: number[] = [];
+  const outStill: number[] = [];
+  for (let i = 0; i < 90; i++) {
+    const x = 0.5 + noise();
+    rawStill.push(x);
+    outStill.push(sm.smooth([{ x, y: 0.5 }], (i * 1000) / 30)[0].x);
+  }
+  const tail = (xs: number[]) => xs.slice(30);
+  const reduction = sd(tail(rawStill)) / sd(tail(outStill));
+  check(
+    'a still face is smoothed at least 3x',
+    reduction >= 3,
+    `jitter cut ${reduction.toFixed(1)}x`,
+  );
+
+  // (b) Leaning in: a real move must still be tracked, not dragged behind.
+  const sm2 = new LandmarkSmoother();
+  let last = 0;
+  for (let i = 0; i < 90; i++) {
+    const t = i / 30;
+    const x = 0.3 + Math.min(1, t / 1.5) * 0.3 + noise(); // 0.3 -> 0.6 over 1.5s
+    last = sm2.smooth([{ x, y: 0.5 }], (i * 1000) / 30)[0].x;
+  }
+  check(
+    'a deliberate move is followed, not lagged',
+    Math.abs(last - 0.6) < 0.01,
+    `settled at ${last.toFixed(4)} vs target 0.6`,
+  );
+
+  // (c) Losing the face must not drag the next detection in from the old pose.
+  const sm3 = new LandmarkSmoother();
+  for (let i = 0; i < 30; i++) sm3.smooth([{ x: 0.2, y: 0.5 }], (i * 1000) / 30);
+  sm3.reset();
+  const after = sm3.smooth([{ x: 0.8, y: 0.5 }], 2000)[0].x;
+  check('reset drops the old pose entirely', near(after, 0.8, 1e-9), `${after}`);
 }
 
 console.log('\nindex sanity');

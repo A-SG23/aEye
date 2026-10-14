@@ -115,7 +115,9 @@ export function Draw({
             <button className="btn btn-primary btn-lg stage-cta-btn" onClick={openDesigner}>
               Set wing shape!
             </button>
-            <p className="stage-cta-note">we&rsquo;ll freeze a frame so you can shape it</p>
+            <p className="stage-cta-note">
+              stay still with your eyes open for 2 seconds, then click draw!
+            </p>
           </div>
         )}
 
