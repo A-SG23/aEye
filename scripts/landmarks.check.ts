@@ -14,7 +14,7 @@ import {
   toCanvas,
   upperLidPath,
   type NormalizedPoint,
-} from '../src/landmarks.ts';
+} from '../src/core/landmarks.ts';
 import {
   canvasToLocal,
   curvatureFromPoint,
@@ -22,13 +22,13 @@ import {
   localToCanvas,
   resolveWing,
   type WingParams,
-} from '../src/wing.ts';
-import { LandmarkSmoother } from '../src/smoothing.ts';
+} from '../src/core/wing.ts';
+import { LandmarkSmoother } from '../src/core/smoothing.ts';
 import {
   TemplateGate,
   decomposeAngles,
   type TrackingQuality,
-} from '../src/trackingQuality.ts';
+} from '../src/core/trackingQuality.ts';
 
 const W = 1280;
 const H = 720;

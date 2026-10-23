@@ -4,10 +4,10 @@
  * This is the diagnostic surface: when the template lands wrong, these are the
  * numbers that say why.
  */
-import { LEFT_EYE, RIGHT_EYE, type EyeMetrics } from '../landmarks.ts';
-import type { TrackerStats } from '../useFaceTracker.ts';
-import type { MetricRange, RangeSnapshot } from '../trackingQuality.ts';
-import type { WingParams } from '../wing.ts';
+import { LEFT_EYE, RIGHT_EYE, type EyeMetrics } from '../../core/landmarks.ts';
+import type { TrackerStats } from '../hooks/useFaceTracker.ts';
+import type { MetricRange, RangeSnapshot } from '../../core/trackingQuality.ts';
+import type { WingParams } from '../../core/wing.ts';
 
 export function MetricsPanel({
   stats,

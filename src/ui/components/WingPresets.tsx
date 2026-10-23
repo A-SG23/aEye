@@ -5,7 +5,7 @@
  * what you see is the shape you get — not a hand-drawn approximation that
  * could drift away from what the preset actually does.
  */
-import { WING_PRESETS, previewGeometry, type WingParams, type WingPreset } from '../wing.ts';
+import { WING_PRESETS, previewGeometry, type WingParams, type WingPreset } from '../../core/wing.ts';
 
 /** Thumbnail viewbox, in eye-width units, with the outer canthus at the origin. */
 const VB = { x: -0.95, y: -0.45, w: 1.65, h: 0.95 };

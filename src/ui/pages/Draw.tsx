@@ -4,8 +4,8 @@
  * panel beneath it rather than over it.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { useFaceTracker, type StillFrame } from '../useFaceTracker.ts';
-import { DEFAULT_WING, type WingParams } from '../wing.ts';
+import { useFaceTracker, type StillFrame } from '../hooks/useFaceTracker.ts';
+import { DEFAULT_WING, type WingParams } from '../../core/wing.ts';
 import { MetricsPanel } from '../components/MetricsPanel.tsx';
 import { WingDesigner } from '../components/WingDesigner.tsx';
 

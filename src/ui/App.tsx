@@ -4,8 +4,8 @@ import { Draw } from './pages/Draw.tsx';
 import { Explore } from './pages/Explore.tsx';
 import { Home } from './pages/Home.tsx';
 import { navigate, useRoute, type Route } from './router.ts';
-import type { WingParams } from './wing.ts';
-import './App.css';
+import type { WingParams } from '../core/wing.ts';
+import './styles/App.css';
 
 const NAV: { route: Route; label: string }[] = [
   { route: 'draw', label: 'draw' },

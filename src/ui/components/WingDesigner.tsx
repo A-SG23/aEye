@@ -9,7 +9,7 @@
  * tab order and arrow-key nudging all come for free.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RIGHT_EYE, measureEye } from '../landmarks.ts';
+import { RIGHT_EYE, measureEye } from '../../core/landmarks.ts';
 import {
   canvasToLocal,
   clampParams,
@@ -18,9 +18,9 @@ import {
   resolveWing,
   type LocalPoint,
   type WingParams,
-} from '../wing.ts';
-import { COLORS, traceWing } from '../draw.ts';
-import type { StillFrame } from '../useFaceTracker.ts';
+} from '../../core/wing.ts';
+import { COLORS, traceWing } from '../../core/draw.ts';
+import type { StillFrame } from '../hooks/useFaceTracker.ts';
 import { WingPresets } from './WingPresets.tsx';
 
 /** Logical design space. Handles are positioned as percentages of it. */
